@@ -1,6 +1,6 @@
 # 2025/3/21 16:30
 from give_cards import create_deck, shuffle_deck, deal_cards
-from rule import Rules
+from rule_new import Rules
 import random
 
 
