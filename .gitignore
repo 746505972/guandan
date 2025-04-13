@@ -1,5 +1,10 @@
 env/
 .venv/
 .virtualenvs/
+.vs/
+.notebook/
+build/
 *.pyc
+*.pyd
+*.c
 __pycache__/

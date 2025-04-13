@@ -1,12 +1,5 @@
 from collections import Counter
 
-# 定义牌的点数
-CARD_RANKS = {
-    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8,
-    '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14,
-    '小王': 16, '大王': 17
-}
-RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 class Rules:
     def __init__(self, level_card=None):
         self.level_card = level_card  # 级牌
@@ -139,18 +132,18 @@ class Rules:
     def get_rank(self, card, as_one=False):
         """获取牌的点数，支持 A=1"""
         if card in ['小王', '大王']:
-            return CARD_RANKS[card]
+            return self.CARD_RANKS[card]
 
         rank = card[2:] if len(card) > 2 else card[2]  # 解析点数
 
         # **只检查当前局的级牌**
-        if rank == RANKS[self.level_card - 2]:
-            return CARD_RANKS['A'] + 1  # 级牌比 A 还大
+        if rank == self.RANKS[self.level_card - 2]:
+            return self.CARD_RANKS['A'] + 1  # 级牌比 A 还大
 
         if as_one and rank == 'A':
             return 1  # A 作为 1
 
-        return CARD_RANKS.get(rank, 0)
+        return self.CARD_RANKS.get(rank, 0)
 
     def _is_consecutive(self, ranks):
         """判断是否为连续数字序列"""
@@ -220,41 +213,3 @@ class Rules:
         """获取牌点数"""
         ranks = [self.get_rank(card) for card in cards]
         return max(ranks)
-
-
-
-
-if __name__ == "__main__":
-    current_round = 2
-    rules = Rules(level_card=str(current_round))
-
-
-
-    print(rules.is_valid_play(['黑桃6', '红桃2', '方块7', '梅花9', '黑桃7', '黑桃9']))
-    '''
-    prev_type = rules.get_play_type(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6'])  # 5炸
-    curr_type = rules.get_play_type(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A'])  # 同花顺
-
-    bomb_order = ['天王炸', '8炸', '7炸', '6炸', '同花顺', '5炸', '4炸']
-    print(f"5炸排名: {bomb_order.index(prev_type)}, 同花顺排名: {bomb_order.index(curr_type)}")
-    print(rules.get_play_type(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A']))  # ✅ True（同花顺）
-    print(rules.get_play_type(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6']))
-    print(rules.get_play_type(['红桃6', '方块6', '梅花6', '黑桃6', '红桃6', '黑桃6']))
-
-    # ✅ 正确识别同花顺
-    print(rules.get_play_type(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A']))  # ✅ True（同花顺）
-    print(rules.get_play_type(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6']))
-    print(rules.get_play_type(['红桃6', '方块6', '梅花6', '黑桃6', '红桃6', '黑桃6']))
-
-    print(rules.can_beat(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6'],
-                         ['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A']))
-    print(rules.is_flush_straight(['红桃A', '红桃2', '红桃3', '红桃4', '红桃5']))
-    # ✅ 5 炸 vs 同花顺（同花顺应当更大）
- # ✅ True（同花顺 > 5炸）
-
-    # ✅ 6 炸 vs 同花顺（6 炸应当更大）
-    print(rules.can_beat(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A'],
-                         ['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6', '红桃6']))  # ✅ True（6炸 > 同花顺）
-    '''
-
-

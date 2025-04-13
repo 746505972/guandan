@@ -1,0 +1,58 @@
+digraph GuandanAI {
+    rankdir=TB;
+    node [shape=box, style=filled, fillcolor="#F5F5F5", fontname="Microsoft YaHei"];
+    edge [fontname="SimSun"];
+
+    // 输入层
+    subgraph cluster_input {
+        label="输入层 (3049维)";
+        style=filled;
+        fillcolor="#E6F3FF";
+
+        hand_card [label="手牌独热编码\n(54维)"];
+        history [label="历史动作编码\n(2000维)"];
+        opponent [label="对手信息\n(牌数/出牌风格)"];
+    }
+
+    // 预处理
+    concat [label="特征拼接", shape=circle, fillcolor="#FFE6CC"];
+    dense1024 [label="全连接层\n(1024节点, Swish激活)", fillcolor="#CCE5FF"];
+    norm [label="层归一化\n(LayerNorm)", shape=ellipse];
+    dropout [label="随机丢弃\n(Dropout 30%)", shape=ellipse];
+
+    // 注意力机制
+    reshape [label="特征重塑\n(序列格式)", shape=parallelogram];
+    attention [label="多头注意力\n(4头, 64维键值)", fillcolor="#FFCCE5"];
+    flatten [label="展平", shape=circle];
+
+    // 共享主干
+    shared [label="共享特征\n(512维, GELU)", fillcolor="#D5E8D4"];
+
+    // 输出头
+    policy [label="策略头\n(全连接256 → Softmax)", fillcolor="#FFF2CC"];
+    value [label="价值头\n(全连接256 → 线性)", fillcolor="#FFF2CC"];
+    legal_mask [label="合法动作掩码", shape=diamond, fillcolor="#FFCCCC"];
+
+    // 训练流程
+    ppo [label="PPO优化\n1. 优势估计\n2. 策略更新\n3. 价值更新", shape=component, fillcolor="#E1D5E7"];
+
+    // 连接关系
+    {hand_card history opponent} -> concat;
+    concat -> dense1024 -> norm -> dropout;
+    dropout -> reshape -> attention -> flatten;
+    {dropout flatten} -> shared;
+    shared -> policy;
+    shared -> value;
+    policy -> legal_mask [label="强制合法化"];
+    legal_mask -> ppo [label="动作概率"];
+    value -> ppo [label="状态价值"];
+
+    // 特殊标注
+    subgraph cluster_note {
+        label="关键设计";
+        style=dashed;
+
+        note1 [label="残差连接\n(跳过注意力层)", shape=note];
+        note2 [label="动作掩码保证\n出牌合法性", shape=note];
+    }
+}
