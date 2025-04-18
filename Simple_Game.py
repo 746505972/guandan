@@ -344,6 +344,6 @@ class GuandanGame:
             print(f"场上最新出牌：{' '.join(self.last_play)}\n")
 
 if __name__ == "__main__":
-    game = GuandanGame(user_player=2,active_level=None,verbose=True,print_history=True)
+    game = GuandanGame(user_player=None,active_level=None,verbose=True,print_history=True)
     game.play_game()
 

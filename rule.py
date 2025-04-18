@@ -225,36 +225,5 @@ class Rules:
 
 
 if __name__ == "__main__":
-    current_round = 2
-    rules = Rules(level_card=str(current_round))
-
-
-
-    print(rules.is_valid_play(['黑桃6', '红桃2', '方块7', '梅花9', '黑桃7', '黑桃9']))
-    '''
-    prev_type = rules.get_play_type(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6'])  # 5炸
-    curr_type = rules.get_play_type(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A'])  # 同花顺
-
-    bomb_order = ['天王炸', '8炸', '7炸', '6炸', '同花顺', '5炸', '4炸']
-    print(f"5炸排名: {bomb_order.index(prev_type)}, 同花顺排名: {bomb_order.index(curr_type)}")
-    print(rules.get_play_type(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A']))  # ✅ True（同花顺）
-    print(rules.get_play_type(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6']))
-    print(rules.get_play_type(['红桃6', '方块6', '梅花6', '黑桃6', '红桃6', '黑桃6']))
-
-    # ✅ 正确识别同花顺
-    print(rules.get_play_type(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A']))  # ✅ True（同花顺）
-    print(rules.get_play_type(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6']))
-    print(rules.get_play_type(['红桃6', '方块6', '梅花6', '黑桃6', '红桃6', '黑桃6']))
-
-    print(rules.can_beat(['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6'],
-                         ['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A']))
-    print(rules.is_flush_straight(['红桃A', '红桃2', '红桃3', '红桃4', '红桃5']))
-    # ✅ 5 炸 vs 同花顺（同花顺应当更大）
- # ✅ True（同花顺 > 5炸）
-
-    # ✅ 6 炸 vs 同花顺（6 炸应当更大）
-    print(rules.can_beat(['黑桃10', '黑桃J', '黑桃Q', '黑桃K', '黑桃A'],
-                         ['黑桃6', '红桃6', '方块6', '梅花6', '黑桃6', '红桃6']))  # ✅ True（6炸 > 同花顺）
-    '''
-
-
+    rules = Rules(level_card=2)
+    print(rules.is_valid_play(['黑桃8', '红桃8', '方块7', '梅花9', '黑桃7', '黑桃9']))
