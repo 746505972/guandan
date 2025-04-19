@@ -5,6 +5,7 @@
 ![Static Badge](https://img.shields.io/badge/ver.-0.1.1-purple)
 ## 2025/4/18
 ### 强化学习组：
+搭建Actor网络（暂无奖励函数）
 ## 2025/4/7
 ### 强化学习组：
 ![graphviz.png](graphviz.png)

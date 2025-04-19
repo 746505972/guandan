@@ -129,8 +129,9 @@ def enumerate_colorful_actions(action, hand, level_rank: int):
             unique_combos.append(combo)
     return unique_combos
 
-
+'''
 # 示例测试
 hand1 = ['红桃2', '红桃2','黑桃3', '红桃3', '黑桃4', '红桃4', '红桃4', '黑桃4','黑桃5', '红桃5']
 action1 = {'type': 'pair_chain', 'points': [3,3,4,4,5,5]}
 print(enumerate_colorful_actions(action1, hand1, level_rank=10))
+'''
