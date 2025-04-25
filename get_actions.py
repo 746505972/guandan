@@ -1,6 +1,7 @@
 # 2025/4/17 10:22
 from collections import defaultdict
 from itertools import combinations, product
+import numpy as np
 # 定义花色和点数
 SUITS = ['黑桃', '红桃', '梅花', '方块']
 RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
@@ -129,9 +130,47 @@ def enumerate_colorful_actions(action, hand, level_rank: int):
             unique_combos.append(combo)
     return unique_combos
 
+def build_card_index_map():
+    index_map = {}
+    idx = 0
+    for copy in range(2):
+        for suit in ['黑桃', '红桃', '梅花', '方块']:
+            for rank in ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']:
+                card = f"{suit}{rank}"
+                if card not in index_map:
+                    index_map[card] = []
+                index_map[card].append(idx)
+                idx += 1
+    for copy in range(2):
+        index_map.setdefault('小王', []).append(idx)
+        idx += 1
+        index_map.setdefault('大王', []).append(idx)
+        idx += 1
+    return index_map
+
+def encode_hand_108(hand):
+    card_map = build_card_index_map()
+    obs = np.zeros(108)
+    if hand == ['Pass'] or hand == ['None'] or not hand:
+        hand = []
+
+    card_count = {}
+    for card in hand:
+        card_count[card] = card_count.get(card, 0) + 1
+
+    for card, count in card_count.items():
+        indices = card_map.get(card, [])
+        for i in range(min(count, len(indices))):
+            obs[indices[i]] = 1.0
+    return obs
+
 '''
 # 示例测试
-hand1 = ['红桃2', '红桃2','黑桃3', '红桃3', '黑桃4', '红桃4', '红桃4', '黑桃4','黑桃5', '红桃5']
+hand1 = ['红桃2', '红桃2','黑桃3', '红桃3', '黑桃4', '红桃4', '红桃4', '黑桃4','黑桃5', '红桃5','大王','小王','大王']
 action1 = {'type': 'pair_chain', 'points': [3,3,4,4,5,5]}
-print(enumerate_colorful_actions(action1, hand1, level_rank=10))
+obs = np.zeros(108)
+
+# 1️⃣ 当前玩家手牌 (108)
+obs[:108] = encode_hand_108(hand1)
+print(obs)
 '''

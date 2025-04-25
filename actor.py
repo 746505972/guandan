@@ -103,7 +103,7 @@ def run_training(episodes=1000):
                 # 1. 模型推理
                 state = game._get_obs()
                 state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
-                mask = torch.tensor(game.get_valid_action_mask(player.hand, M, game.active_level)).unsqueeze(0)
+                mask = torch.tensor(game.get_valid_action_mask(player.hand, M, game.active_level,game.last_play)).unsqueeze(0)
                 probs = actor(state_tensor, mask)
                 action_id = torch.multinomial(probs, 1).item()
                 action_struct = M_id_dict[action_id]
@@ -120,6 +120,7 @@ def run_training(episodes=1000):
                         game.last_play = chosen_move
                         game.last_player = game.current_player
                         for card in chosen_move:
+                            player.played_cards.append(card)
                             player.hand.remove(card)
                         game.log(f"玩家 {game.current_player + 1} 出牌: {' '.join(chosen_move)}")
                         game.recent_actions[game.current_player] = list(chosen_move)  # 记录出牌
@@ -143,6 +144,7 @@ def run_training(episodes=1000):
 
                 reward = -len(player.hand)  # 越少越好
                 memory.append({"state": state, "action_id": action_id, "reward": reward})
+                player.last_played_cards = game.recent_actions[game.current_player]
                 game.current_player = (game.current_player + 1) % 4
             else:
                 game.ai_play(player)  # 其他人用随机

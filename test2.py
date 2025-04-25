@@ -155,7 +155,7 @@ def generate_wildcards_placeholder():
 
 # 主函数
 if __name__ == "__main__":
-    total = [{"type":"pass","points":[],"logic_point":0},{"type":"None","points":[],"logic_point":0}]
+    total = [{"type":"None","points":[],"logic_point":0}]
     total += generate_singles()
     total += generate_pairs()
     total += generate_triples()

@@ -1,7 +1,7 @@
 import numpy as np
-from get_actions import enumerate_colorful_actions
+from get_actions import enumerate_colorful_actions, CARD_RANKS, SUITS,encode_hand_108
 import random
-from collections import Counter
+from collections import Counter,defaultdict
 try:
     from c_rule import Rules  # 导入 Cython 版本
 except ImportError:
@@ -20,6 +20,7 @@ class Player:
         """
         self.hand = hand  # 手牌
         self.played_cards = []  # 记录已出的牌
+        self.last_played_cards = []
 
 class GuandanGame:
     def __init__(self, user_player=None, active_level=None,verbose=True , print_history=False):
@@ -58,6 +59,48 @@ class GuandanGame:
     def sort_cards(self, cards):
         """按牌的大小排序（从大到小）"""
         return sorted(cards, key=lambda card: self.rules.get_rank(card), reverse=True)
+
+    def map_cards_to_action(self,cards, M, level_rank):
+        """
+        从实际出过的牌中（带花色），判断其结构动作（含同花顺识别）。
+        """
+        point_count = defaultdict(int)
+        suits = set()
+
+        for card in cards:
+            for rank in RANKS + ['小王', '大王']:
+                if rank in card:
+                    raw_point = CARD_RANKS[rank]
+                    logic_point = 15 if raw_point == level_rank else raw_point
+                    point_count[logic_point] += 1
+                    break
+            # 提取花色
+            for s in SUITS:
+                if card.startswith(s):
+                    suits.add(s)
+                    break
+
+        # 构建点数序列（带重复）
+        logic_points = []
+        for pt, count in sorted(point_count.items()):
+            logic_points.extend([pt] * count)
+
+        # 🔍 同花顺检测
+        if len(cards) == 5 and len(point_count) == 5:
+            sorted_points = sorted(point_count.keys())
+            if all(sorted_points[i + 1] - sorted_points[i] == 1 for i in range(4)):
+                if len(suits) == 1:
+                    # 是同花顺 → 去 M 中找类型为 straight_flush
+                    for action in M:
+                        if action['type'] == 'flush_rocket' and sorted(action['points']) == sorted_points:
+                            return action
+
+        # 🔁 普通结构匹配
+        for action in M:
+            if sorted(action['points']) == sorted(logic_points):
+                return action
+
+        return None
 
     def play_turn(self):
         """执行当前玩家的回合"""
@@ -151,13 +194,83 @@ class GuandanGame:
                         break
         return move
 
-    def get_valid_action_mask(self,hand, M, level_rank):
+    def can_beat(self,curr_action, prev_action):
+        """
+        判断结构动作 curr_action 是否能压过 prev_action
+        """
+        # 如果没人出牌，当前动作永远可以出
+        if prev_action["type"] == "None":
+            return True
+
+        curr_type = curr_action["type"]
+        prev_type = prev_action["type"]
+
+        # 炸弹类型（根据牌力表）
+        bomb_power = {
+            "joker_bomb": 6,
+            "8_bomb": 5,
+            "7_bomb": 4,
+            "6_bomb": 3,
+            "flush_rocket": 2,
+            "5_bomb": 1,
+            "4_bomb": 0
+        }
+
+        is_curr_bomb = curr_type in bomb_power
+        is_prev_bomb = prev_type in bomb_power
+
+        # ✅ 炸弹能压非炸弹
+        if is_curr_bomb and not is_prev_bomb:
+            return True
+        if not is_curr_bomb and is_prev_bomb:
+            return False
+
+        # ✅ 两个都是炸弹 → 比炸弹牌力 → 再比 logic_point
+        if is_curr_bomb and is_prev_bomb:
+            if bomb_power[curr_type] > bomb_power[prev_type]:
+                return True
+            elif bomb_power[curr_type] < bomb_power[prev_type]:
+                return False
+            else:  # 相同牌力 → 比点数
+                return curr_action["logic_point"] > prev_action["logic_point"]
+
+        # ✅ 非炸弹时，牌型必须相同才可比
+        if curr_type != prev_type:
+            return False
+
+        # ✅ 非炸弹，牌型相同 → 比 logic_point
+        return curr_action["logic_point"] > prev_action["logic_point"]
+
+    def get_valid_action_mask(self,hand, M, level_rank, last_action):
+        """
+        返回 mask 向量，标记每个结构动作在当前手牌下是否合法。
+        如果 last_action 为 None，则为主动出牌，可出任意合法牌型；
+        否则为跟牌回合，只能出能压过 last_action 的合法牌。
+        """
         mask = np.zeros(len(M), dtype=np.float32)
+        if not last_action:
+            last_action = []
+        last_action = self.map_cards_to_action(last_action, M, level_rank)
         for action in M:
             action_id = action['id']
             combos = enumerate_colorful_actions(action, hand, level_rank)
-            if combos:  # 至少有一种组合可用
+            if not combos:
+                continue  # 当前手牌无法组成该结构
+
+            if last_action is None:
+                # 主动出牌：只要能组成即可
                 mask[action_id] = 1.0
+            else:
+                # 跟牌出牌：还要能压上上家
+                if self.can_beat(action, last_action):
+                    mask[action_id] = 1.0
+        if not self.is_free_turn:
+            # 永远允许出 “None” 结构（pass）
+            for action in M:
+                if action['type'] == 'None':
+                    mask[action['id']] = 1.0
+                    break
+
         return mask
 
     def ai_play(self, player):
@@ -191,6 +304,7 @@ class GuandanGame:
                 self.last_play = chosen_move
                 self.last_player = self.current_player
                 for card in chosen_move:
+                    player.played_cards.append(card)
                     player_hand.remove(card)
                 self.log(f"玩家 {self.current_player + 1} 出牌: {' '.join(chosen_move)}")
                 self.recent_actions[self.current_player] = list(chosen_move)  # 记录出牌
@@ -208,6 +322,7 @@ class GuandanGame:
                 if self.is_free_turn:
                     self.is_free_turn = False
 
+        player.last_played_cards = self.recent_actions[self.current_player]
         self.current_player = (self.current_player + 1) % 4
         return self.check_game_over()
 
@@ -277,60 +392,64 @@ class GuandanGame:
         """
         构造状态向量，总共 3049 维
         """
-        obs = np.zeros(3049)  # ✅ 修正 obs 长度
+        obs = np.zeros(3049)
 
-        # 1️⃣ **当前玩家的手牌 (108 维)**
-        for card in self.players[self.current_player].hand:
-            obs[self.card_to_index(card)] = 1  # ✅ 确保 `hand` 是列表
-
-        # 2️⃣ **其他玩家手牌 (3 维，表示手牌数量)**
+        # 1️⃣ 当前玩家手牌 (108)
+        obs[:108]=encode_hand_108(self.players[self.current_player].hand)
         offset = 108
+
+        # 2️⃣ 其他玩家手牌数量 (3)
         for i, player in enumerate(self.players):
             if i != self.current_player:
-                obs[offset + i] = min(len(player.hand), 26) / 26.0  # ✅ 归一化到 [0,1]
-        offset += 3  # ✅ 其他玩家手牌数量 (3 维)
+                obs[offset + i] = min(len(player.hand), 26) / 26.0
+        offset += 3
 
-        # 3️⃣ **每个玩家最近动作 (108 * 4 = 432 维)**
-        for i in range(4):
-            action = self.recent_actions[i] if self.recent_actions[i] else []
-            for card in action:
-                obs[offset + i * 108 + self.card_to_index(card)] = 1
+        # 3️⃣ 最近动作 (108 * 4 = 432)
+        for i, player in enumerate(self.players):
+            obs[offset + i * 108 : offset + (i + 1) * 108] = encode_hand_108(player.last_played_cards)
         offset += 108 * 4
 
-        # 4️⃣ **其他玩家已出的牌 (108 * 3 = 324 维)**
+        # 4️⃣ 其他玩家已出牌 (108 * 3 = 324)
         for i, player in enumerate(self.players):
             if i != self.current_player:
-                for card in player.played_cards:
-                    obs[offset + i * 108 + self.card_to_index(card)] = 1
+                obs[offset + i * 108 : offset + (i + 1) * 108] = encode_hand_108(player.played_cards)
         offset += 108 * 3
 
-        # 5️⃣ **当前级牌 (13 维)**
+        # 5️⃣ 当前级牌 (13)
         obs[offset + self.level_card_to_index(self.active_level)] = 1
         offset += 13
 
-        # 6️⃣ **最近 5 轮历史 (108 * 4 * 5 = 2160 维)**
-        history_length = min(5, len(self.history))  # ✅ 确保访问最近 5 轮
-        for round_idx in range(history_length):
-            round_actions = self.history[-(history_length - round_idx)]  # 取最近 5 轮
-            for player_idx, action in enumerate(round_actions):
-                for card in action:
-                    obs[offset + round_idx * 108 * 4 + player_idx * 108 + self.card_to_index(card)] = 1
-        offset += 108 * 4 * 5
+        # 6️⃣ 最近 20 步动作历史 (108 * 20 = 2160)
+        HISTORY_LEN = 20
+        history_flat = []
 
-        # 7️⃣ **协作/压制/辅助状态 (3×3 = 9 维)**
-        coop_status = self.compute_coop_status()  # [1, 0, 0]
-        dwarf_status = self.compute_dwarf_status()  # [1, 0, 0]
-        assist_status = self.compute_assist_status()  # [1, 0, 0]
+        # 展平所有轮次中的动作
+        for round in self.history:
+            for action in round:
+                history_flat.append(action)
 
-        obs[offset:offset + 3] = coop_status
-        obs[offset + 3:offset + 6] = dwarf_status
-        obs[offset + 6:offset + 9] = assist_status
+        # 若不满 20，则在最前补空动作（表示“没人出牌”）
+        while len(history_flat) < HISTORY_LEN:
+            history_flat.insert(0, [])  # 用空动作填充
+
+        # 取最后 20 个动作
+        history_flat = history_flat[-HISTORY_LEN:]
+
+        # 编码入 obs
+        for i, action in enumerate(history_flat):
+            start = offset + i * 108
+            obs[start:start + 108] = encode_hand_108(action)
+        offset += 108 * HISTORY_LEN
+
+        # 7️⃣ 状态向量 (9)
+        obs[offset:offset + 3] = self.compute_coop_status()
+        obs[offset + 3:offset + 6] = self.compute_dwarf_status()
+        obs[offset + 6:offset + 9] = self.compute_assist_status()
         offset += 9
 
-        # ✅ 确保 offset 没有超出 3049
         assert offset == 3049, f"⚠️ offset 计算错误: 预期 3049, 实际 {offset}"
-
         return obs
+
 
     def compute_reward(self):
         """计算当前的奖励"""
