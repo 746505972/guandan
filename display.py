@@ -39,7 +39,7 @@ class ActorNet(nn.Module):
             logits = logits + (mask - 1) * 1e9
         return F.softmax(logits, dim=-1)
 actor = ActorNet()
-actor.load_state_dict(torch.load("models/actor_ep200.pth"))
+actor.load_state_dict(torch.load("models/actor_ep400.pth"))
 actor.eval()
 class Player:
     def __init__(self, hand):
@@ -52,7 +52,7 @@ class Player:
 
 
 class GuandanGame:
-    def __init__(self, user_player=None, active_level=None, verbose=True, print_history=False):
+    def __init__(self, user_player=None, active_level=None, verbose=True, print_history=False,test=False):
         # **两队各自的级牌**
         self.print_history = print_history
         self.active_level = active_level if active_level else random.choice(range(2, 15))
@@ -73,8 +73,10 @@ class GuandanGame:
         self.team_2 = {1, 3}
         self.is_free_turn = True
         self.jiefeng = False
-        self.winning_team = None
+        self.winning_team = 0
         self.is_game_over = False
+        self.upgrade_amount = 0
+        self.test=test
 
         # **手牌排序**
         for player in self.players:
@@ -96,7 +98,8 @@ class GuandanGame:
         """
         point_count = defaultdict(int)
         suits = set()
-
+        if not cards:
+            cards = []
         for card in cards:
             for rank in RANKS + ['小王', '大王']:
                 if rank in card:
@@ -158,10 +161,13 @@ class GuandanGame:
                 self.pass_count = 0  # ✅ Pass 计数归零
                 self.is_free_turn = True
 
-        if self.current_player == 0:
-            result = self.actor_play(player)
+        if self.user_player == self.current_player:
+            result = self.user_play(player)
         else:
-            result = self.ai_play(player)
+            if self.test and self.current_player == 0:
+                result = self.actor_play(player)
+            else:
+                result = self.ai_play(player)
         # **记录最近 5 轮历史**
         if self.current_player == 0:
             round_history = [self.recent_actions[i] for i in range(4)]
@@ -233,7 +239,10 @@ class GuandanGame:
         """
         # 如果没人出牌，当前动作永远可以出
         if prev_action["type"] == "None":
-            return True
+            if curr_action["type"] == "None":
+                return False
+            else:
+                return True
 
         curr_type = curr_action["type"]
         prev_type = prev_action["type"]
@@ -404,6 +413,143 @@ class GuandanGame:
         self.current_player = (self.current_player + 1) % 4
         return self.check_game_over()
 
+    def user_play(self, player):
+        """用户出牌逻辑"""
+        if self.current_player in self.ranking:
+            self.recent_actions[self.current_player] = []  # 记录空列表
+            self.current_player = (self.current_player + 1) % 4
+            return self.check_game_over()
+
+        self.get_ai_suggestions(player)
+        while True:
+            self.show_user_hand()  # 显示手牌
+            choice = input("\n请选择要出的牌（用空格分隔），或直接回车跳过（PASS）： ").strip()
+
+            # **用户选择 PASS**
+            if choice == "" or choice.lower() == "pass":
+                if self.is_free_turn:
+                    print("❌ 你的输入无效，自由回合必须出牌！")
+                    continue
+                print(f"玩家 {self.current_player + 1} 选择 PASS")
+                self.pass_count += 1
+                self.recent_actions[self.current_player] = ['Pass']  # ✅ 记录 PASS
+                break
+
+            # **解析用户输入的牌**
+            selected_cards = choice.split()
+
+            # **检查牌是否在手牌中**
+            if not all(card in player.hand for card in selected_cards):
+                print("❌ 你的输入无效，请确保牌在你的手牌中！")
+                continue  # 重新输入
+
+            # **检查牌是否合法**
+            if not self.rules.is_valid_play(selected_cards):
+                print("❌ 你的出牌不符合规则，请重新选择！")
+                continue  # 重新输入
+
+            last_action = self.map_cards_to_action(self.last_play, M, self.active_level)
+            chosen = self.map_cards_to_action(selected_cards, M, self.active_level)
+            # **检查是否能压过上一手牌**
+            if  not self.can_beat(chosen,last_action):
+                print("❌ 你的牌无法压过上一手牌，请重新选择！")
+                continue  # 重新输入
+
+            # **成功出牌**
+            for card in selected_cards:
+                player.played_cards.append(card)
+                player.hand.remove(card)  # 从手牌中移除
+            self.last_play = selected_cards  # 记录这次出牌
+            self.last_player = self.current_player  # 记录是谁出的
+            self.recent_actions[self.current_player] = list(selected_cards)  # 记录出牌历史
+            self.jiefeng = False
+            print(f"玩家 {self.current_player + 1} 出牌: {' '.join(selected_cards)}")
+
+            # **如果手牌为空，玩家出完所有牌**
+            if not player.hand:
+                print(f"\n🎉 玩家 {self.current_player + 1} 出完所有牌！\n")
+                self.ranking.append(self.current_player)
+                if len(self.ranking) <= 2:
+                    self.jiefeng = True
+
+            # **出牌成功，Pass 计数归零**
+            self.pass_count = 0
+            if not player.hand:
+                self.pass_count -= 1
+            if self.is_free_turn:
+                self.is_free_turn = False
+            break
+
+        # **切换到下一个玩家**
+        player.last_played_cards = self.recent_actions[self.current_player]
+        self.current_player = (self.current_player + 1) % 4
+
+        return self.check_game_over()
+
+    def get_ai_suggestions(self,player):
+        # --- Get AI Suggestions ---
+        state = self._get_obs()
+        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+        mask = torch.tensor(self.get_valid_action_mask(player.hand, M, self.active_level, self.last_play)).unsqueeze(0)
+
+        # Ensure the actor model is accessible, e.g., self.actor if it's part of the class
+        # Or just 'actor' if it's loaded globally as in your original file example
+        global actor  # Assuming actor is loaded globally
+        with torch.no_grad():  # Disable gradient calculation for inference
+            # Note: The actor output 'probs' is already after a softmax over ALL actions
+            all_probs = actor(state_tensor, mask)  #
+
+        # Get top 3 suggestions (indices and their original probabilities)
+        # We use the original probabilities from the full softmax to find the top K
+        top_k_orig_probs, top_k_indices = torch.topk(all_probs, k=3, dim=-1)
+
+        # --- Apply Softmax to ONLY the top K probabilities for relative comparison ---
+        # Detach is good practice here although not strictly necessary with no_grad()
+        # We only apply softmax if there are positive probabilities to normalize
+        valid_top_k_probs = top_k_orig_probs[top_k_orig_probs > 0]  # Filter out zero probabilities if any
+        if valid_top_k_probs.numel() > 0:
+            # Apply softmax to the non-zero probabilities of the top k actions
+            normalized_top_k_probs_tensor = F.softmax(valid_top_k_probs, dim=-1)
+            # Create a placeholder for normalized probabilities matching top_k_indices size
+            normalized_top_k_probs = torch.zeros_like(top_k_orig_probs)
+            # Fill in the normalized probabilities where the original probs were positive
+            normalized_top_k_probs[top_k_orig_probs > 0] = normalized_top_k_probs_tensor
+        else:
+            # Handle case where all top k probabilities are zero (e.g., mask filtered everything)
+            normalized_top_k_probs = torch.zeros_like(top_k_orig_probs)
+
+        print("\n--- AI 建议 ---")
+        for i in range(top_k_indices.size(1)):
+            action_id = top_k_indices[0, i].item()
+            # Use the normalized probability for display
+            normalized_prob = normalized_top_k_probs[0, i].item()
+
+            # We still check original probability > 0 to decide if it was a valid move initially
+            if top_k_orig_probs[0, i].item() > 0:
+                action_struct = M_id_dict.get(action_id)
+                if action_struct:
+                    # Try to generate a readable description (you might need a better way)
+                    action_desc = action_struct.get('name', action_struct.get('type', f'动作ID {action_id}'))
+                    # Include points if available for clarity
+                    points_str = ""
+                    if 'points' in action_struct and action_struct['points']:
+                        # Convert logic points back to ranks roughly if needed, or just show points
+                        points_str = f" (点数: {action_struct['points']})"
+                    # Handle Pass action specifically
+                    if action_struct.get('type') == 'None':
+                        action_desc = "Pass (不出)"
+                        points_str = ""
+
+                    # Display the normalized probability
+                    print(f"建议 {i + 1}: {action_desc}{points_str} - 相对概率: {normalized_prob:.2%}")
+                else:
+                    print(f"建议 {i + 1}: 未知动作 ID {action_id} - 相对概率: {normalized_prob:.2%}")
+            else:
+                # If original probability was 0, it wasn't a valid move
+                print(f"建议 {i + 1}: (无有效动作)")
+
+        print("-----------------------------")
+
     def check_game_over(self):
         """检查游戏是否结束"""
         # **如果有 2 个人出完牌，并且他们是同一队伍，游戏立即结束**
@@ -429,6 +575,7 @@ class GuandanGame:
         """升级级牌"""
         first_player = self.ranking[0]  # 第一个打完牌的玩家
         winning_team = 1 if first_player in self.team_1 else 2
+        self.winning_team = winning_team
         # 确定队友
         teammate = 2 if first_player == 0 else 0 if first_player == 2 else 3 if first_player == 1 else 1
 
@@ -438,6 +585,7 @@ class GuandanGame:
         # 头游 + 队友的名次，确定得分
         upgrade_map = {1: 3, 2: 2, 3: 1}  # 头游 + (队友的名次) 对应的升级规则
         upgrade_amount = upgrade_map[teammate_position]
+        self.upgrade_amount=upgrade_amount
 
         self.log(f"\n🏆 {winning_team} 号队伍获胜！得 {upgrade_amount} 分")
         # 显示最终排名
@@ -574,10 +722,39 @@ class GuandanGame:
         """
         return [1, 0, 0]  # 目前默认"不能辅助"，后续可修改逻辑
 
+def test():
+    win = 0
+    first = 0
+    yi = 0
+    er = 0
+    san = 0
+    n=500
+    for _ in range(n):
+        game = GuandanGame(user_player=None,active_level=None,verbose=False,print_history=True,test=True)
+        game.play_game()
+        if game.winning_team == 1:
+            win += 1
+            if game.upgrade_amount == 1:
+                yi += 1
+            elif game.upgrade_amount == 2:
+                er += 1
+            else:
+                san += 1
+
+        if game.ranking[0]==0:
+            first += 1
+    print(n,'场胜率：',win/n*100,'%','\n',
+          '其中，一二名',yi/win*100,'%','\n',
+          '一三名',er/win*100,'%','\n',
+          '一四名',san/win*100,'%','\n',
+          '第一手出完：',first/n*100,'%')
+
 
 if __name__ == "__main__":
-    game = GuandanGame(user_player=None, active_level=None, verbose=True, print_history=True)
+
+    game = GuandanGame(user_player=1, active_level=None, verbose=True, print_history=True)
     game.play_game()
+
 
 
 

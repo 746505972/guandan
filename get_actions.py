@@ -24,21 +24,32 @@ def parse_hand(hand):
     return point_to_cards
 
 def find_combinations(points, point_to_cards):
-    """递归回溯地找出所有不重复使用牌的组合"""
+    """递归回溯地找出所有不重复使用牌的组合（通过索引区分同名牌）"""
     results = []
 
-    def backtrack(index, path, used_cards):
+    card_pool = []  # (point, card) 的列表
+    card_to_idx = {}  # point ➔ 对应的全局 idx 列表
+    idx = 0
+    for p, cards in point_to_cards.items():
+        for c in cards:
+            card_pool.append((p, c))
+            card_to_idx.setdefault(p, []).append(idx)
+            idx += 1  # 全局编号递增
+
+    def backtrack(index, path, used_idx):
         if index == len(points):
-            results.append(path[:])
+            results.append([card_pool[i][1] for i in path])  # 只保留牌面
             return
         p = points[index]
-        available = [c for c in point_to_cards.get(p, []) if c not in used_cards]
-        for card in set(available):
-            used_cards.add(card)
-            path.append(card)
-            backtrack(index + 1, path, used_cards)
+        available = [i for i in card_to_idx.get(p, []) if i not in used_idx]
+        if not available:
+            return  # ❌ 找不到需要的牌直接剪枝
+        for i in available:
+            used_idx.add(i)
+            path.append(i)
+            backtrack(index + 1, path, used_idx)
             path.pop()
-            used_cards.remove(card)
+            used_idx.remove(i)
 
     backtrack(0, [], set())
     return results
@@ -120,6 +131,14 @@ def enumerate_colorful_actions(action, hand, level_rank: int):
     if not structured_combos:
         raw_combos = find_combinations(action['points'], point_to_cards)
 
+    if action['type'] == 'flush_rocket':
+        filtered_combos = []
+        for combo in raw_combos:
+            suits = [card[:2] for card in combo]
+            if all(s == suits[0] for s in suits):  # 花色必须完全一致
+                filtered_combos.append(combo)
+        raw_combos = filtered_combos
+
     # 去重
     seen = set()
     unique_combos = []
@@ -167,10 +186,38 @@ def encode_hand_108(hand):
 '''
 # 示例测试
 hand1 = ['红桃2', '红桃2','黑桃3', '红桃3', '黑桃4', '红桃4', '红桃4', '黑桃4','黑桃5', '红桃5','大王','小王','大王']
-action1 = {'type': 'pair_chain', 'points': [3,3,4,4,5,5]}
-obs = np.zeros(108)
+action1 = {"type":"single","points":[16],"logic_point":16,"id":16}
 
+obs = np.zeros(108)
 # 1️⃣ 当前玩家手牌 (108)
 obs[:108] = encode_hand_108(hand1)
 print(obs)
+#mask = torch.tensor(self.get_valid_action_mask(player.hand, M, self.active_level, self.last_play)).unsqueeze(0)
 '''
+
+def test_cases():
+    level_rank = 9
+    hand = ['大王', '大王', '方块8', '黑桃A', '方块K', '方块K', '黑桃K', '梅花Q', '黑桃Q', '方块J', '梅花10', '梅花10', '梅花10', '方块9', '红桃9', '方块7', '梅花7', '黑桃6', '方块6', '红桃6', '红桃5', '方块5', '梅花4', '方块4', '方块3', '红桃2', '方块2']
+    a={"type":"straight","points":[10,11,12,13,14],"logic_point":10,"a_as":"high","id":339}
+    print(enumerate_colorful_actions(a, hand, level_rank=8))
+    # ---------------- 连对（aabbcc）测试 ----------------
+    # 测试连对 - 同花色
+    hand = ['红桃7', '红桃7', '红桃8', '红桃8', '红桃9', '红桃9']
+    a = {"type": "pair_chain", "points": [7, 7, 8, 8, 9, 9], "logic_point": 7, "id": 5}
+    print(enumerate_colorful_actions(a, hand, level_rank))
+
+    # 测试连对 - 异花色
+    hand = ['红桃7', '黑桃7', '红桃8', '黑桃8', '红桃9', '黑桃9']
+    a = {"type": "pair_chain", "points": [7, 7, 8, 8, 9, 9], "logic_point": 7, "id": 6}
+    print(enumerate_colorful_actions(a, hand, level_rank))
+
+
+    # ---------------- 四大天王（四王炸）测试 ----------------
+    # 四大天王 - 正确
+    hand = ['小王', '小王', '大王', '大王']
+    a = {"type": "joker_bomb", "points": [16, 16, 17, 17], "logic_point": 16, "id": 9}
+    print(enumerate_colorful_actions(a, hand, level_rank))
+
+
+
+

@@ -1,7 +1,33 @@
 # guandan
  掼蛋强化学习
 
-![Static Badge](https://img.shields.io/badge/ver.-0.2.0-pink)
+![Static Badge](https://img.shields.io/badge/ver.-1.0.1(Beta)-orange)
+## 2025/4/25
+### 建立A2C网络，能够训练、预测。
+
+`ActorNet` 输出结构动作 `action_id` 的概率分布（考虑了 mask）；
+
+`CriticNet` 输出当前 `state` 的 `value` 估计；
+
+### 奖励函数
+
+r=reward + gamma ** (len(memory) - i - 1) * final_reward
+
+`reward`为即时奖励，值为出牌长度*牌型的`logic_point`
+
+`final_reward`为整局奖励，队伍获胜为正，12名为3，13名为2，14名为1，反之亦然
+
+`memory`是一局的记录，结构为`[{state,action_id,reward},{state,action_id,reward},...]`
+
+### 优势函数：
+
+$advantage=r+\gamma*V(state')-V(state)$
+
+其中最后一个 $transition$ 没有 $state'$ ,设 $\gamma*V(state')=0$
+
+`Actor Loss`= $-log(p)*advantage$
+
+`Critic Loss` = $||advantage||^2$
 ## 2025/4/20
 108维具体参照：
 `

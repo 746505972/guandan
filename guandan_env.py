@@ -44,8 +44,9 @@ class GuandanGame:
         self.team_2 = {1, 3}
         self.is_free_turn=True
         self.jiefeng = False
-        self.winning_team = None
+        self.winning_team = 0
         self.is_game_over = False
+        self.upgrade_amount = 0
 
         # **手牌排序**
         for player in self.players:
@@ -200,7 +201,10 @@ class GuandanGame:
         """
         # 如果没人出牌，当前动作永远可以出
         if prev_action["type"] == "None":
-            return True
+            if curr_action["type"] == "None":
+                return False
+            else:
+                return True
 
         curr_type = curr_action["type"]
         prev_type = prev_action["type"]
@@ -266,10 +270,7 @@ class GuandanGame:
                     mask[action_id] = 1.0
         if not self.is_free_turn:
             # 永远允许出 “None” 结构（pass）
-            for action in M:
-                if action['type'] == 'None':
-                    mask[action['id']] = 1.0
-                    break
+            mask[0] = 1.0
 
         return mask
 
@@ -351,6 +352,7 @@ class GuandanGame:
         """升级级牌"""
         first_player = self.ranking[0]  # 第一个打完牌的玩家
         winning_team = 1 if first_player in self.team_1 else 2
+        self.winning_team = winning_team
         # 确定队友
         teammate = 2 if first_player == 0 else 0 if first_player == 2 else 3 if first_player == 1 else 1
 
@@ -360,6 +362,7 @@ class GuandanGame:
         # 头游 + 队友的名次，确定得分
         upgrade_map = {1: 3, 2: 2, 3: 1}  # 头游 + (队友的名次) 对应的升级规则
         upgrade_amount = upgrade_map[teammate_position]
+        self.upgrade_amount=upgrade_amount
 
         self.log(f"\n🏆 {winning_team} 号队伍获胜！得 {upgrade_amount} 分")
         # 显示最终排名

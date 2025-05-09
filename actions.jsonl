@@ -117,7 +117,7 @@
 {"type":"8_bomb","points":[13,13,13,13,13,13,13,13],"logic_point":13,"id":116}
 {"type":"8_bomb","points":[14,14,14,14,14,14,14,14],"logic_point":14,"id":117}
 {"type":"8_bomb","points":[15,15,15,15,15,15,15,15],"logic_point":15,"id":118}
-{"type":"joker_bomb","points":[16,16,17,17],"id":119}
+{"type":"joker_bomb","points":[16,16,17,17],"logic_point":1,"id":119}
 {"type":"three_with_pair","points":[2,2,2,3,3],"logic_point":2,"id":120}
 {"type":"three_with_pair","points":[2,2,2,4,4],"logic_point":2,"id":121}
 {"type":"three_with_pair","points":[2,2,2,5,5],"logic_point":2,"id":122}

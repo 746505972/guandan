@@ -16,6 +16,12 @@ action_dim = len(M)
 RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 # 构建动作映射字典
 M_id_dict = {a['id']: a for a in M}
+def find_entry_by_id(data, target_id):
+    """返回匹配 id 的整个 JSON 对象"""
+    for entry in data:
+        if entry.get("id") == target_id:
+            return entry
+    return None
 
 # Actor 网络定义
 class ActorNet(nn.Module):
@@ -28,44 +34,98 @@ class ActorNet(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim)
         )
-
     def forward(self, x, mask=None):
         logits = self.net(x)
         if mask is not None:
             logits = logits + (mask - 1) * 1e9
         return F.softmax(logits, dim=-1)
 
+class CriticNet(nn.Module):
+    def __init__(self, state_dim=3049, action_dim=1, hidden_dim=256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim)
+        )
+    def forward(self, x):
+        value = self.net(x)
+        return value
+
+
 # 初始化模型
 actor = ActorNet()
-optimizer = optim.Adam(actor.parameters(), lr=1e-4)
+critic= CriticNet()
+actor_optimizer = optim.Adam(actor.parameters(), lr=1e-4)
+critic_optimizer = optim.Adam(critic.parameters(), lr=1e-4)
+gamma=0.9
 
 # 尝试加载已有模型
-def load_latest_model(actor, model_dir="models"):
+def load_latest_models(actor, critic, model_dir="models"):
     model_files = sorted(Path(model_dir).glob("actor_ep*.pth"))
     if model_files:
-        latest_model = str(model_files[-1])  # 取最新的模型
-        actor.load_state_dict(torch.load(latest_model))
-        print(f"✅ 加载已有模型: {latest_model}")
-        return int(latest_model.split("_ep")[1].split(".pth")[0])  # 返回最后的ep数
+        latest_actor_path = str(model_files[-1])
+        ep = int(latest_actor_path.split("_ep")[1].split(".pth")[0])
+        latest_critic_path = f"{model_dir}/critic_ep{ep}.pth"
+
+        actor.load_state_dict(torch.load(latest_actor_path))
+        print(f"✅ 加载已有 actor 模型: {latest_actor_path}")
+
+        if Path(latest_critic_path).exists():
+            critic.load_state_dict(torch.load(latest_critic_path))
+            print(f"✅ 加载已有 critic 模型: {latest_critic_path}")
+        else:
+            print(f"⚠️ 未找到 critic 模型: {latest_critic_path}")
+
+        return ep
     return 0
-initial_ep = load_latest_model(actor)
+
+# 调用加载函数
+initial_ep = load_latest_models(actor, critic)
 
 # 训练函数
-def train_on_batch(batch, device="cpu"):
-    # 高效转换（无警告）
+def train_on_batch(batch, gamma=0.99, device="cpu"):
+    # 将数据组织为 tensor
     states = torch.tensor(np.array([s["state"] for s in batch]), dtype=torch.float32).to(device)
     actions = torch.tensor(np.array([s["action_id"] for s in batch]), dtype=torch.long).to(device)
     rewards = torch.tensor(np.array([s["reward"] for s in batch]), dtype=torch.float32).to(device)
 
-    probs = actor(states)
+    # 自动构造 next_states 和 dones
+    next_states = torch.zeros_like(states)
+    next_states[:-1] = states[1:]  # t+1 的 state
+    next_states[-1] = 0.0          # 最后一条无下一状态
+    dones = torch.zeros(len(batch), dtype=torch.bool, device=device)
+    dones[-1] = True               # 最后一条为 done
+
+    # === Critic 估值 ===
+    values = critic(states).squeeze(-1)            # [batch]
+    next_values = critic(next_states).squeeze(-1)  # [batch]
+    next_values[dones] = 0.0
+
+    # === Advantage ===
+    advantages = rewards + gamma * next_values - values
+
+    # === Critic Loss ===
+    critic_loss = advantages.pow(2).mean()
+
+    # === Actor Loss ===
+    probs = actor(states)                          # [batch, action_dim]
     log_probs = torch.log(probs + 1e-8)
     chosen_log_probs = log_probs[range(len(batch)), actions]
-    loss = -(chosen_log_probs * rewards).mean()
+    actor_loss = -(chosen_log_probs * advantages.detach()).mean()
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    return loss.item()
+    # === 更新参数 ===
+    actor_optimizer.zero_grad()
+    actor_loss.backward()
+    actor_optimizer.step()
+
+    critic_optimizer.zero_grad()
+    critic_loss.backward()
+    critic_optimizer.step()
+
+    return actor_loss.item(), critic_loss.item()
 
 # 模拟训练流程
 def run_training(episodes=1000):
@@ -76,7 +136,7 @@ def run_training(episodes=1000):
         game.log(f"\n🎮 游戏开始！当前级牌：{RANKS[game.active_level - 2]}")
 
         while True:
-            if game.is_game_over:  # 如果游戏结束，立即跳出循环
+            if game.is_game_over or len(game.history) > 200:  # 如果游戏结束，立即跳出循环
                 break
             player = game.players[game.current_player]
             active_players = 4 - len(game.ranking)
@@ -142,7 +202,14 @@ def run_training(episodes=1000):
                     game.pass_count += 1
                     game.recent_actions[game.current_player] = ['Pass']  # 记录 Pass
 
-                reward = -len(player.hand)  # 越少越好
+
+                entry = find_entry_by_id(M,action_id)
+                if action_id ==0 :
+                    reward = 0
+                else:
+                    reward = float(len(entry['points'])*(1/entry['logic_point']))
+                    if 120 <= action_id <= 364 : reward += reward
+
                 memory.append({"state": state, "action_id": action_id, "reward": reward})
                 player.last_played_cards = game.recent_actions[game.current_player]
                 game.current_player = (game.current_player + 1) % 4
@@ -154,13 +221,18 @@ def run_training(episodes=1000):
                 game.history.append(round_history)
                 game.recent_actions = [['None'], ['None'], ['None'], ['None']]
 
+        final_reward = game.upgrade_amount*(1 if game.winning_team == 1 else -1)
         if memory:  # 确保 memory 不为空
-            loss = train_on_batch(memory)
-            if (ep + 1) % 10 == 0:  # 每 10 局输出一次 loss
-                print(f"Episode {ep + 1}, loss: {loss:.4f}")
+            for i, s in enumerate(memory):
+                s["reward"] += gamma ** (len(memory) - i - 1) * final_reward
+            al,cl = train_on_batch(memory)
+            if (ep + 1) % 50 == 0:
+                print(f"Episode {ep + 1}, action_loss: {al:.4f},critic_loss: {cl:.4f}")
 
-        if (ep + 1) % 100 == 0:
+
+        if (ep + 1) % 200 == 0:
             torch.save(actor.state_dict(), f"models/actor_ep{ep + 1}.pth")
+            torch.save(critic.state_dict(), f"models/critic_ep{ep + 1}.pth")
 
 if __name__ == "__main__":
     run_training()
