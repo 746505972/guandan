@@ -296,7 +296,7 @@ elif st.session_state.page == "main":
                 <div>
                     <strong>当前级牌：</strong>
                     <span style="background-color: red; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 20px;">
-                        {game.active_level}
+                        {game.point_to_card(game.active_level)}
                     </span>
                 </div>
                 <div style="width: 1px; height: 20px; background-color: #ccc;"></div>

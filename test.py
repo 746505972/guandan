@@ -27,12 +27,14 @@ class ActorNet(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),     # ✅ 增加稳定性
             nn.ReLU(),
+            nn.Dropout(0.1),              # ✅ 防过拟合
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(0.1),
             nn.Linear(hidden_dim, action_dim)
         )
-
     def forward(self, x, mask=None):
         logits = self.net(x)
         if mask is not None:
@@ -54,6 +56,8 @@ class Player:
         self.played_cards = []  # 记录已出的牌
         self.last_played_cards = []
 
+def get_R(level):
+    return RANKS + [RANKS[level-2]] + ['小王', '大王']
 # TODO: 添加选座位接口
 # TODO: 检查 方块9 方块A 梅花K 黑桃Q 梅花J
 class GuandanGame:
@@ -84,6 +88,7 @@ class GuandanGame:
         self.test=test
         self.model_path = model_path
         self.actor = load_actor_model(self.model_path)
+        self.R = get_R(self.active_level)
 
         # **手牌排序**
         for player in self.players:
@@ -98,6 +103,12 @@ class GuandanGame:
     def sort_cards(self, cards):
         """按牌的大小排序（从大到小）"""
         return sorted(cards, key=lambda card: self.rules.get_rank(card), reverse=True)
+
+    def point_to_card(self,point) -> [str, list]:
+        if isinstance(point, list):
+            return [str(self.R[int(p) - 2]) for p in point]
+        else:
+            return str(self.R[point - 2])
 
     def map_cards_to_action(self, cards, M, level_rank):
         """
@@ -518,7 +529,7 @@ class GuandanGame:
                 action_struct = M_id_dict.get(action_id)
                 if action_struct:
                     action_desc = action_struct.get('name', action_struct.get('type', f'动作ID {action_id}'))
-                    points_str = f"{action_struct['points']}" if action_struct.get('points') else ""
+                    points_str = f"[{', '.join(self.point_to_card(action_struct['points']))}]" if action_struct.get('points') else ""
                     if action_struct.get('type') == 'None':
                         action_desc = "Pass (不出)"
                         points_str = ""
