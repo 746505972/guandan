@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import json
-from guandan_env import GuandanGame
+from display import GuandanGame
 from get_actions import enumerate_colorful_actions
 import random
 # 加载动作全集 M
@@ -29,9 +29,12 @@ class ActorNet(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),     # ✅ 增加稳定性
             nn.ReLU(),
+            nn.Dropout(0.1),              # ✅ 防过拟合
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(0.1),
             nn.Linear(hidden_dim, action_dim)
         )
     def forward(self, x, mask=None):
@@ -41,18 +44,18 @@ class ActorNet(nn.Module):
         return F.softmax(logits, dim=-1)
 
 class CriticNet(nn.Module):
-    def __init__(self, state_dim=3049, action_dim=1, hidden_dim=256):
+    def __init__(self, state_dim=3049, hidden_dim=512):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim)
+            nn.Linear(hidden_dim, 1)
         )
     def forward(self, x):
-        value = self.net(x)
-        return value
+        return self.net(x)
 
 
 # 初始化模型
@@ -247,7 +250,7 @@ def run_training(episodes=1000):
                 player.last_played_cards = game.recent_actions[game.current_player]
                 game.current_player = (game.current_player + 1) % 4
             else:
-                game.ai_play(player)  # 其他人用随机
+                game.actor_play(player)  # 其他人用随机
             # **记录最近 5 轮历史**
             if game.current_player == 0:
                 round_history = [game.recent_actions[i] for i in range(4)]

@@ -52,7 +52,7 @@ if st.session_state.page == "setup":
         st.rerun()
 
     if st.button("联机大厅",
-                 disabled=True):
+                 disabled=False):
         st.session_state.page = "multi_setup"
         st.rerun()
 

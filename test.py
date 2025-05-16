@@ -179,10 +179,7 @@ class GuandanGame:
         if self.user_player == self.current_player:
             result = self.user_play(player)
         else:
-            if self.test and self.current_player == 0:
-                result = self.actor_play(player)
-            else:
-                result = self.ai_play(player)
+            result = self.actor_play(player)
 
         return result
 

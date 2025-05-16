@@ -25,19 +25,21 @@ class ActorNet(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),     # ✅ 增加稳定性
             nn.ReLU(),
+            nn.Dropout(0.1),              # ✅ 防过拟合
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Dropout(0.1),
             nn.Linear(hidden_dim, action_dim)
         )
-
     def forward(self, x, mask=None):
         logits = self.net(x)
         if mask is not None:
             logits = logits + (mask - 1) * 1e9
         return F.softmax(logits, dim=-1)
 actor = ActorNet()
-actor.load_state_dict(torch.load("models/actor_ep600.pth"))
+actor.load_state_dict(torch.load("models/actor_ep200.pth"))
 actor.eval()
 class Player:
     def __init__(self, hand):
@@ -556,14 +558,14 @@ class GuandanGame:
             if (first_player in self.team_1 and second_player in self.team_1) or (
                     first_player in self.team_2 and second_player in self.team_2):
                 self.ranking.extend(i for i in range(4) if i not in self.ranking)  # 剩下的按出牌顺序补全
-                self.update_level()
+                #self.update_level()
                 self.is_game_over = True
                 return True
 
         # **如果 3 人出完了，自动补全最后一名，游戏结束**
         if len(self.ranking) == 3:
             self.ranking.append(next(i for i in range(4) if i not in self.ranking))  # 找出最后一个玩家
-            self.update_level()
+            #self.update_level()
             self.is_game_over = True
             return True
 
