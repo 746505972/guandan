@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 from server.state import room_store
 from pydantic import BaseModel
 import os
+#import requests
+
 app = FastAPI()
 
 # 添加 CORS 中间件，允许所有来源（开发环境适用）
@@ -24,7 +26,7 @@ def list_models():
     # print("📂 模型目录：", model_dir)
     try:
         models = [f for f in os.listdir(model_dir) if not (f.startswith("c") or f.startswith("a"))]
-        models.sort(key=lambda x: 0 if x == "show2.pth" else 1)
+        models.sort(key=lambda x: 0 if x.startswith("master") else 1)
         # print("📂 可用模型列表：", models)
         return JSONResponse(content={"models": models})
     except Exception as e:
@@ -112,8 +114,56 @@ def solo_new_game(data: dict):
     )
     solo_sessions[user_id] = game
     return {"status": "new game created"}
+'''
+@app.post("/get_ai_advice")
+def get_ai_advice(data: dict):
+    user_id = data["user_id"]
+    game = solo_sessions.get(user_id)
+    if not game:
+        return {"error": "无此游戏"}
+    # 个人令牌
+    personal_access_token = "pat_hkKDo57IEeKmiEtKHOHIGXI1aM4I2BdrkiXFKj8RpvHAdJCTLIlCoxUXh6pkI3Si"
+    # 工作流id
+    workflow_id = "7511520767789842482"
+    # 空间id
+    space_id = "7507512540864544768"
+    state = game.get_game_state()
+    game_state = {
+        "user_hand": game.players[game.user_player].hand, # 用户手牌
+        "last_play": game.last_play, # 上一次有效出牌
+        "last_plays": [game.players[i].last_played_cards for i in range(4)], # 所有人上次出牌
+        "history": state["history"],
+        "last_play_type": game.map_cards_to_action(game.last_play, M, game.active_level)["type"] if game.last_play else "无",
 
-    
+    }
+    # 调用您的工作流
+    response = requests.post(
+        "https://api.coze.cn/v1/workflow/run",
+        headers={
+            "Authorization": f"Bearer {personal_access_token}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "workflow_id": workflow_id,
+            "parameters": {"input": game_state},
+            "space_id": space_id
+        }
+    )
+
+    if response.ok:
+        response_data = response.json()
+        play_result = response_data.get("data", "未获取到出牌结果")
+        print("AI建议:", play_result)
+        return {
+            "success": True,
+            "advice": play_result
+        }
+    else:
+        return {
+            "success": False,
+            "advice": "建议获取失败"
+        }
+'''
 @app.get("/")
 def read_root():
     return {"status": "online", "message": "Guandan server is running.", "Creator": "github.com/746505972"}

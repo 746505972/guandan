@@ -180,6 +180,7 @@ const router = useRouter()
 const gameData = ref<any>(null)
 const selected = ref<number[]>([])
 const isAutoPlaying = ref(false)
+//const aiAdvice = ref<string>(''); // 新增：存储AI建议
 
 const refreshState = async () => {
   if (!store.userId) {
@@ -191,6 +192,8 @@ const refreshState = async () => {
       headers: {'ngrok-skip-browser-warning': 'true'}
     });
     gameData.value = res.data;
+    // 调用工作流获取建议
+    //await fetchAIAdvice();
     console.log('刷新后的游戏状态:', gameData.value);
     
     // 无论是否轮到玩家都尝试自动推进
@@ -247,6 +250,21 @@ const autoAdvanceGame = async () => {
     isAutoPlaying.value = false;
   }
 };
+
+// const fetchAIAdvice = async () => {
+//   try {
+//     const response = await api.post('/get_ai_advice', {
+//       user_id: store.userId,
+//       game_state: gameData.value
+//     }, {
+//       headers: {'ngrok-skip-browser-warning': 'true'}
+//     });
+//     aiAdvice.value = response.data.advice || '暂无建议';
+//   } catch (e) {
+//     console.error('获取AI建议失败', e);
+//     aiAdvice.value = '建议获取失败';
+//   }
+// };
 
 // 计算剩余牌数
 const remainingCards = computed(() => {
