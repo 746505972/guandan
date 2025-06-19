@@ -70,15 +70,41 @@
           <h3>🕹️ 出牌</h3>
           
           <!-- 手牌选择 -->
-          <div class="hand-cards">
-            <button
-              v-for="(card, index) in gameData.user_hand"
-              :key="index"
-              @click="toggleSelect(index)"
-              :class="{ 'selected-card': selected.includes(index) }"
-            >
-              {{ convertCardDisplay(card) }}
-            </button>
+          <div class="hand-cards-container">
+            <div class="hand-cards" ref="handCards">
+              <div
+                v-for="(card, index) in gameData.user_hand"
+                :key="index"
+                @click="toggleSelect(index)"
+                :class="['card', { 'selected-card': selected.includes(index) }]"
+                :style="{
+                  left: `${index * 30}px`, 
+                  zIndex: index,
+                  color: getCardColor(card)
+                }"
+              >
+                <div class="card-content">
+                  <template v-if="isJoker(card)">
+                    <div class="joker-vertical-text">J<br>O<br>K<br>E<br>R</div>
+                    <div class="joker-center">🃟</div>
+                    <div class="joker-vertical-text bottom-right">J<br>O<br>K<br>E<br>R</div>
+                  </template>
+                  <template v-else>
+                    <div class="card-corner top-left">
+                      <div>{{ getCardRankDisplay(card) }}</div>
+                      <div>{{ getCardSuitSymbol(card) }}</div>
+                    </div>
+                    <div class="card-center">
+                      {{ getCardCenterDisplay(card) }}
+                    </div>
+                    <div class="card-corner bottom-right">
+                      <div>{{ getCardRankDisplay(card) }}</div>
+                      <div>{{ getCardSuitSymbol(card) }}</div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- 已选牌显示 -->
@@ -367,6 +393,46 @@ const convertCardDisplay = (cardStr: string) => {
   }
   return cardStr;
 }
+const getCardRankDisplay = (cardStr: string) => {
+  if (cardStr === '大王') return 'JOKER';
+  if (cardStr === '小王') return 'JOKER';
+  return cardStr.slice(2); // 去掉花色前缀，例如"黑桃3" -> "3"
+}
+
+const getCardSuitSymbol = (cardStr: string) => {
+  const suitSymbols = {'黑桃': '♠', '红桃': '♥', '梅花': '♣', '方块': '♦'};
+  if (cardStr === '大王' || cardStr === '小王') return '🃏';
+  for (const [cnSuit, symbol] of Object.entries(suitSymbols)) {
+    if (cardStr.startsWith(cnSuit)) {
+      return symbol;
+    }
+  }
+  return '';
+}
+
+const getCardCenterDisplay = (cardStr: string) => {
+  if (cardStr === '大王') return '大王';
+  if (cardStr === '小王') return '小王';
+  return getCardSuitSymbol(cardStr);
+}
+
+const getCardColor = (cardStr: string) => {
+  if (cardStr === '大王') return 'red';
+  if (cardStr === '小王') return 'black';
+  if (isLevelCard(cardStr)) {
+    return '#ffb700';
+  }
+  if (cardStr.startsWith('红桃') || cardStr.startsWith('方块')) return 'red';
+  return 'black';
+}
+
+const isJoker = (cardStr: string) => {
+  return cardStr === '大王' || cardStr === '小王';
+}
+
+const isLevelCard = (cardStr: string) => {
+  return gameData.value.active_level && cardStr.includes(gameData.value.active_level);
+}
 
 const submitMove = async () => {
   try {
@@ -403,11 +469,13 @@ const pass = async () => {
 }
 
 const autoPlay = async () => {
+  selected.value = [];
   await api.post('/solo_autoplay', { user_id: store.userId },{headers: {'ngrok-skip-browser-warning': 'true'}})
   refreshState()
 }
 
 const newGame = async () => {
+  selected.value = [];
   await api.post('/solo_new_game', { user_id: store.userId , model: store.selectedModel ,position: store.joinedSeat},
   {headers: {'ngrok-skip-browser-warning': 'true',
     'Content-Type': 'application/json'
@@ -580,32 +648,123 @@ onMounted(refreshState)
 }
 
 /* 手牌区域 */
-.hand-cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+.hand-cards-container {
+  position: relative;
+  height: 200px;
+  margin-bottom: 1.5rem;
 }
 
-.hand-cards button {
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  background: white;
+.hand-cards {
+  position: relative;
+  height: 100%;
+}
+
+.hand-section {
+  margin-bottom: 5%; /* 移除默认底部边距 */
+}
+
+.hand-cards-container {
+  height: 120px; /* 固定高度避免过大空白 */
+}
+
+.card {
+  position: absolute;
+  width: 80px;
+  height: 120px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   cursor: pointer;
-  font-size: 1.1rem;
-  min-width: 3rem;
+  transition: all 0.3s ease;
+  transform-origin: bottom center;
+}
+
+.card:hover {
+  transform: translateY(-10px) scale(1.05);
+  /* 移除 z-index 修改 */
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.card.selected-card {
+  transform: translateY(-40px) !important;
+  box-shadow: 0 0 15px rgba(95, 95, 95, 0.5);
+}
+
+.card-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px;
+}
+
+.card-corner {
+  font-size: 12px;
+  font-weight: bold;
   text-align: center;
 }
 
-.hand-cards button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.card-corner.top-left {
+  align-self: flex-start;
 }
 
-.hand-cards button.selected-card {
-  border: 2px solid green;
-  background: #d0f0d0;
+.card-corner.bottom-right {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  transform: rotate(180deg);
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.card-center {
+  font-size: 36px;
+  text-align: center;
+  margin: auto;
+}
+/* Joker牌专用样式 */
+.joker-vertical-text {
+  position: absolute;
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1.2;
+  letter-spacing: 1px;
+}
+
+.joker-vertical-text.bottom-right {
+  right: 8px;
+  bottom: 8px;
+  transform: rotate(180deg);
+}
+
+.joker-center {
+  position: absolute;
+  font-size: 48px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .joker-center {
+    font-size: 36px;
+  }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .card {
+    width: 60px;
+    height: 90px;
+  }
+  
+  .card-center {
+    font-size: 24px;
+  }
 }
 
 /* 已选牌显示 */

@@ -53,6 +53,7 @@ npm run dev
 
 请在`guandan\guandan-frontend\src\utils\axios.ts`的第三行配置好url
 
+![alt text](<img_3.png>)
 ---
 
 ## 📊 项目结构简要说明
