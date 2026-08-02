@@ -1,3 +1,6 @@
+.idea/
+.vscode/
+.git/
 env/
 .venv/
 .virtualenvs/
@@ -8,3 +11,5 @@ build/
 *.pyd
 *.c
 __pycache__/
+*.lock
+*.pth
